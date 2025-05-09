@@ -1,6 +1,6 @@
 {
     "name": "@riftjs/rift",
-    "version": "0.0.12",
+    "version": "0.0.13",
     "main": "dist/bootstrap.js",
     "scripts": {
         "nodemon": "nodemon --config nodemon.json",
@@ -13,7 +13,8 @@
     },
     "types": "./dist/main.d.ts",
     "files": [
-        "dist"
+        "dist",
+        "tsconfig.json"
     ],
     "typesVersions": {
         "*": {
