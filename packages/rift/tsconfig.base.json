@@ -14,12 +14,18 @@
         "incremental": true,
         "declaration": true,
         "declarationMap": true,
-        "emitDeclarationOnly": false
+        "emitDeclarationOnly": false,
+        "paths": {
+            "src/*": [
+                "./src/*"
+            ]
+        }
     },
     "include": [
         "src/**/*.ts" // Only include TypeScript files inside the 'src' directory
     ],
     "exclude": [
+        "dist", // Exclude the 'dist' directory
         "node_modules", // Exclude node_modules
         "example" // Exclude the 'example' directory or any other directories you don't want compiled
     ]
