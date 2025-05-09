@@ -1,9 +1,0 @@
-{
-    "scripts": {
-        "dev": "rift dev",
-        "build": "rift build"
-    },
-    "dependencies": {
-        "@riftjs/rift": "^0.0.17"
-    }
-}
