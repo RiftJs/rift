@@ -1,0 +1,16 @@
+---
+layout: layouts/layout.njk
+permalink: /help-center/
+---
+<!-- Help Center Search bar tailwind -->
+
+<section class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-4">Help Center</h1>
+        <p class="text-gray-700 mb-4">Welcome to our Help Center! How can we assist you today?</p>
+        <form action="/search" method="GET" class="mb-4">
+            <input type="text" name="q" placeholder="Search for help..." class="border border-gray-300 rounded-lg px-4 py-2 w-full">
+            <button type="submit" class="bg-blue-500 text-white rounded-lg px-4 py-2 mt-2">Search</button>
+        </form>
+    </div>
+</section>

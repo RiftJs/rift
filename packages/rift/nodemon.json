@@ -1,0 +1,14 @@
+{
+    "watch": [
+        "example/src",
+        "src"
+    ],
+    "ext": "ts,js,html,md,json,txt,rift,njk",
+    "ignore": [
+        "node_modules"
+    ],
+    "exec": "tsc --project tsconfig.json && node dist/bootstrap.js",
+    "events": {
+        "restart": "echo 'App restarted due to changes...'"
+    }
+}

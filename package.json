@@ -1,0 +1,30 @@
+{
+    "name": "root",
+    "version": "0.0.0",
+    "type": "module",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://gitlab.com/raidframe/riftjs.git"
+    },
+    "scripts": {
+        "dev": "turbo run dev --parallel",
+        "dev-example": "turbo run dev-example --parallel",
+        "build": "turbo run build --parallel"
+    },
+    "directories": {
+        "example": "examples"
+    },
+    "workspaces": [
+        "packages/*",
+        "examples/*"
+    ],
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "devDependencies": {
+        "turbo": "^2.5.3"
+    },
+    "packageManager": "npm@9.8.1",
+    "license": "MIT"
+}

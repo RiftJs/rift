@@ -1,0 +1,19 @@
+# Node specific
+node_modules/
+package-lock.json
+
+
+# Build output
+dist/
+.turbo/
+
+# TypeScript specific
+*.tsbuildinfo
+
+# MacOS specific
+.DS_Store
+
+.rift/
+
+# do not commit .env files or any files that end with `.env`
+*.env

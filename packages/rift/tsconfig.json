@@ -1,0 +1,31 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "CommonJS",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "strict": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "outDir": "./dist",
+        "baseUrl": "./",
+        "resolveJsonModule": true,
+        "allowSyntheticDefaultImports": true,
+        "incremental": true,
+        "declaration": true,
+        "declarationMap": true,
+        "emitDeclarationOnly": false,
+        "paths": {
+            "src/*": [
+                "./src/*"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*.ts" // Only include TypeScript files inside the 'src' directory
+    ],
+    "exclude": [
+        "node_modules", // Exclude node_modules
+        "example" // Exclude the 'example' directory or any other directories you don't want compiled
+    ]
+}

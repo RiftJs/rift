@@ -1,0 +1,32 @@
+---
+controller: blog/blog.controller
+# Arguments to pass to the controller
+config:
+postsPerPage: 3
+layout: layouts/layout.njk
+---
+
+{# {% extends "layouts/layout" %}
+
+{% block content %}
+<h1>Hello</h1>
+<p>This is the body</p>
+{% endblock %}
+#}
+
+{{ page.length }}
+
+{% for post in page.items %}
+    <article class="prose prose-lg max-w-none mx-auto px-4">
+        {{ post.content | markdown }}
+    </article>
+{% endfor %}
+
+
+{% if page.previous %}
+    <a href="/blog/page/{{ page.previous + 1 }}" class="text-blue-500 hover:underline">Previous</a>
+{% endif %}
+
+{% if page.next %}
+    <a href="/blog/page/{{ page.next + 1 }}" class="text-blue-500 hover:underline">Next</a>
+{% endif %}
