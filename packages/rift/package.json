@@ -1,12 +1,12 @@
 {
     "name": "@riftjs/rift",
-    "version": "0.0.13",
+    "version": "0.0.14",
     "main": "dist/bootstrap.js",
     "scripts": {
         "nodemon": "nodemon --config nodemon.json",
         "dev": "npm run nodemon",
         "dev-example": "npm run nodemon -- dev --path ../../examples/development --debug --trace --verbose",
-        "build": "tsc --project tsconfig.json"
+        "build": "tsc --project tsconfig.build.json"
     },
     "bin": {
         "rift": "./dist/bootstrap.js"
@@ -14,7 +14,8 @@
     "types": "./dist/main.d.ts",
     "files": [
         "dist",
-        "tsconfig.json"
+        "tsconfig.base.json",
+        "tsconfig.build.json"
     ],
     "typesVersions": {
         "*": {
