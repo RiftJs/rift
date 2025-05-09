@@ -2,12 +2,36 @@
 
 const { execSync } = require("child_process");
 const path = require("path");
+const fs = require("fs");
+const inquirer = require("inquirer");
 
-const target = process.argv[2] || "my-rift-site";
+(async () =>
+{
+    console.log("🚀 Rift Project Generator");
 
-console.log(`🚀 Creating Rift project in '${target}'`);
+    const { projectName } = await inquirer.prompt([
+        {
+            name: "projectName",
+            type: "input",
+            message: "Project folder name:",
+            default: "my-rift-site",
+        },
+    ]);
 
-execSync(`git clone https://github.com/riftjs/rift-starter ${target}`, { stdio: "inherit" });
-execSync(`cd ${target} && npm install`, { stdio: "inherit" });
+    const target = projectName.trim();
 
-console.log(`✅ Done! cd ${target} && npm run dev`);
+    if (fs.existsSync(target))
+    {
+        console.error(`❌ Folder '${target}' already exists.`);
+        process.exit(1);
+    }
+
+    console.log(`📦 Creating project in '${target}'...`);
+    execSync(`npx degit riftjs/rift-starter ${target}`, { stdio: "inherit" });
+
+    console.log("📥 Installing dependencies...");
+    execSync(`cd ${target} && npm install`, { stdio: "inherit" });
+
+    console.log(`✅ Done!`);
+    console.log(`👉 cd ${target} && npm run dev`);
+})();

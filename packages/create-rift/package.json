@@ -1,12 +1,15 @@
 {
     "name": "create-rift",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "main": "create-rift.js",
     "bin": {
         "create-rift": "./create-rift.js"
     },
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "dependencies": {
+        "inquirer": "^9.0.0"
     },
     "author": "",
     "license": "ISC",
