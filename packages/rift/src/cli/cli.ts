@@ -165,7 +165,7 @@ program
                 buildProcess.kill("SIGTERM");
             }
 
-            let cliPath = require.resolve("rift/bootstrap.js");
+            let cliPath = require.resolve("@riftjs/rift/bootstrap.js");
             buildProcess = spawn(process.execPath, [cliPath, "build", "--path", path], {
                 stdio: "inherit",
                 cwd: process.cwd(),
