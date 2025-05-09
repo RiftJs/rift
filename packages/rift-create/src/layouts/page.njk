@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rift – It Begins</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-zinc-950 text-white">
+
+    {% include "partials/navigation.njk" %}
+
+    <div class="text-center my-10">
+        <img src="/assets/logo.png" alt="Logo" class="w-32 h-32 mx-auto transition duration-300 hover:scale-110 hover:drop-shadow-[0_0_20px_#0ff]">
+    </div>
+
+
+    <div class="flex items-center justify-center px-4">
+        {{content | safe}}
+    </div>
+</body>
+
+</html>
