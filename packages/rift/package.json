@@ -1,6 +1,6 @@
 {
     "name": "@riftjs/rift",
-    "version": "0.0.15",
+    "version": "0.0.16",
     "main": "dist/bootstrap.js",
     "scripts": {
         "nodemon": "nodemon --config nodemon.json",
