@@ -1,7 +1,4 @@
-import fastifyStatic from "@fastify/static";
-import fastify from "fastify";
 import { existsSync, readFileSync, ReadStream } from "fs";
-import livereload from "livereload";
 import { join } from "path";
 import { Logger } from "src/core/logger";
 
@@ -23,6 +20,8 @@ export class DevServer
 
     async serve(): Promise<void>
     {
+        const fastifyStatic = (await import("@fastify/static")).default;
+        const fastify = (await import("fastify")).default;
         const app = fastify();
         app.register(fastifyStatic, {
             root: this.servePath,
@@ -49,7 +48,7 @@ export class DevServer
             if (contentType && contentType.includes("text/html"))
             {
                 let content = "";
-                if(payload instanceof Buffer)
+                if (payload instanceof Buffer)
                 {
                     content = payload.toString("utf-8");
                 }
@@ -64,7 +63,7 @@ export class DevServer
                         payload.on("error", reject);
                     });
                 }
-          
+
                 if (content.includes("</body>"))
                 {
                     content = content.replace("</body>", this.liveReloadScript + "</body>");
@@ -109,6 +108,8 @@ export class DevServer
 
     async livereload()
     {
+        const livereload = (await import("livereload")).default;
+
         const lrServer = livereload.createServer({
             delay: 100,
             exts: ['html', 'js', 'css', 'json'],
