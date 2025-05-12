@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "CommonJS",
+        "outDir": "./dist",
+        "moduleResolution": "node",
+        "strict": true,
+        "sourceMap": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "verbatimModuleSyntax": false,
+        "rootDir": "./src",
+        "types": [
+            "node",
+        ]
+    },
+    "include": [
+        "src",
+        "types",
+        "src/**/*.js",
+        "src/**/*.ts",
+        "**/*.rift",
+    ]
+}
