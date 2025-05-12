@@ -1,3 +1,4 @@
+import { HTMLGeneratorSettings } from "./document";
 import { VDOMNode } from "./node";
 
 export class VDOMCommentNode extends VDOMNode
@@ -10,8 +11,8 @@ export class VDOMCommentNode extends VDOMNode
     }
 
 
-    toHTML(): string
+    toHTML(indent: number = 0, settings?: HTMLGeneratorSettings): string
     {
-        return `<!--${this.comment}-->`;
+        return " ".repeat(indent * (settings?.indent ?? 0)) + `<!--${this.comment}-->`;
     }
 };

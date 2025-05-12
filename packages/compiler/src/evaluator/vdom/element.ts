@@ -1,10 +1,18 @@
+import { HTMLGeneratorSettings } from "./document";
 import { VDOMNode } from "./node";
+import { VDOMTextNode } from "./text";
 
 export interface VDOMAttribute
 {
     name: string;
     value?: string;
 };
+
+
+const RAW_TEXT_ELEMENTS = new Set(["pre", "textarea", "script", "style", "xmp"]);
+
+const isRawTextElement = (name: string) => RAW_TEXT_ELEMENTS.has(name.toLowerCase());
+
 
 export class VDOMElementNode extends VDOMNode
 {
@@ -16,26 +24,61 @@ export class VDOMElementNode extends VDOMNode
         super();
     }
 
-    toHTML(indent: number): string
+    toHTML(indent: number = 0, settings?: HTMLGeneratorSettings): string
     {
-        let result = " ".repeat(indent) + `<${this.name}`;
-        for (let attribute of this.attributes)
+        const mode = settings?.renderMode ?? "pretty";
+        const indentSize = settings?.indent ?? 2;
+        const pad = " ".repeat(indent * indentSize);
+        const isRaw = isRawTextElement(this.name);
+
+        let result = mode === "pretty" ? pad : "";
+        result += `<${this.name}`;
+
+        for (let attr of this.attributes)
         {
-            if (attribute.value)
-            {
-                result += ` ${attribute.name}="${attribute.value}"`;
-            }
-            else
-            {
-                result += ` ${attribute.name}`;
-            }
+            result += attr.value != null && attr.value !== ""
+                ? ` ${attr.name}="${attr.value}"`
+                : ` ${attr.name}`;
         }
+
+        if (!this.children.length)
+        {
+            return result + (mode === "minify" ? "/>" : " />") + (mode === "pretty" ? "\n" : "");
+        }
+
         result += ">";
+
+        if (mode === "pretty" && !isRaw) result += "\n";
+
         for (let child of this.children)
         {
-            result += child.toHTML(indent + 2);
+            if (child instanceof VDOMTextNode)
+            {
+                if (isRaw)
+                {
+                    result += child.toHTML(indent, { renderMode: "preserve" });
+                    continue;
+                }
+            }
+            const childHTML = child.toHTML(indent + 1, settings);
+            if (mode === "minify")
+            {
+                result += childHTML.trim();
+            } else if (mode === "pretty" && !isRaw)
+            {
+                result += childHTML;
+            } else
+            {
+                result += childHTML;
+            }
         }
+
+        if (mode === "pretty" && !isRaw) result += pad;
         result += `</${this.name}>`;
+
+        if (mode === "pretty") result += "\n";
         return result;
     }
+
+
 };

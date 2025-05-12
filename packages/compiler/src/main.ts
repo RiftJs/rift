@@ -41,7 +41,9 @@ function renderFile(path: string, data: any): string
         console.log("VDOM Document:", inspect(vdomDocument, { showHidden: false, depth: Infinity, colors: true }));
 
 
-        return vdomDocument.toHTML();
+        return vdomDocument.toHTML({
+            renderMode: "minify",
+        });
         // console.log("Lexer state:", inspect(lexer, { showHidden: false, depth: Infinity, colors: true }));
         // console.log("Parser state:", inspect(parser, { showHidden: false, depth: Infinity, colors: true }));
 
@@ -99,7 +101,7 @@ function renderFile(path: string, data: any): string
 }
 
 
-let contents = renderFile("./src/tests/for-statement.html", {
+let contents = renderFile("./src/tests/test.html", {
     siteTitle: "My Site",
     posts: [
         { title: "Post 1", content: "Content 1" },
