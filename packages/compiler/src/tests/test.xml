@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<note>
-    <to>Alice</to>
-    <from>Bob</from>
-    <heading>Reminder</heading>
-    <body>
-        Don't forget our meeting at 10am tomorrow!</body>
-</note>
