@@ -1,6 +1,9 @@
 import chalk, { ChalkInstance } from "chalk";
 import { inspect } from "util";
 
+/**
+ * LogFlags control which log levels are enabled for the Logger.
+ */
 export enum LogFlags
 {
     None = 0,
@@ -13,12 +16,20 @@ export enum LogFlags
     All = Error | Warning | Info | Debug | Verbose,
 }
 
-export const Colors = chalk;
-
+/**
+ * Logger provides static methods for logging messages at various levels (error, warning, info, debug, verbose).
+ * Supports colored output and log level filtering.
+ */
 export class Logger
 {
     static flags: LogFlags = LogFlags.All;
 
+    /**
+     * Writes a message to the console with the specified color and category.
+     * @param color The chalk color instance.
+     * @param message The message or object to log.
+     * @param category Optional log category label.
+     */
     protected static write(color: ChalkInstance, message: string | any, category?: string): void
     {
         const date = new Date();
@@ -71,6 +82,9 @@ export class Logger
         console.log(`${timestamp} ${prefix} ${color(message)}`);
     }
 
+    /**
+     * Logs a message at the default log level.
+     */
     static log(message: string | any, category?: string): void
     {
 
@@ -83,6 +97,9 @@ export class Logger
         this.write(chalk.white, message, category ?? "LOG");
     }
 
+    /**
+     * Logs an error message and optional stack trace.
+     */
     static error(message: string | any, stack?: string, category?: string): void
     {
         if ((this.flags & LogFlags.Error) === 0)
@@ -96,6 +113,9 @@ export class Logger
         }
     }
 
+    /**
+     * Logs a warning message.
+     */
     static warning(message: string | any, category?: string): void
     {
         if ((this.flags & LogFlags.Warning) === 0)
@@ -105,6 +125,9 @@ export class Logger
         this.write(chalk.yellow, message, category ?? "WARNING");
     }
 
+    /**
+     * Logs an info message.
+     */
     static info(message: string | any, category?: string): void
     {
         if ((this.flags & LogFlags.Info) === 0)
@@ -114,6 +137,9 @@ export class Logger
         this.write(chalk.green, message, category ?? "INFO");
     }
 
+    /**
+     * Logs a debug message.
+     */
     static debug(message: string | any, category?: string): void
     {
         if ((this.flags & LogFlags.Debug) === 0)
@@ -123,6 +149,9 @@ export class Logger
         this.write(chalk.cyan, message, category ?? "DEBUG");
     }
 
+    /**
+     * Logs a verbose message.
+     */
     static verbose(message: string | any, category?: string): void
     {
         if ((this.flags & LogFlags.Verbose) === 0)

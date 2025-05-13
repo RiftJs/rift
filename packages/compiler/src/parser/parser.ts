@@ -41,12 +41,23 @@ type RiftParserEvents = {
     // foreachEnd: [RiftNode];
 };
 
+/**
+ * RiftParser parses a RiftSource into a RiftModuleNode AST.
+ * Emits events for parse lifecycle and errors. Uses a token handler map for extensible parsing.
+ */
 export class RiftParser
 {
+    /**
+     * The parser context, containing the lexer and AST node stack.
+     */
     public context: RiftParserContext;
-    // Parser state
+    /**
+     * Event emitter for parser lifecycle and error events.
+     */
     public events: EventEmitter<RiftParserEvents> = new EventEmitter<RiftParserEvents>();
-
+    /**
+     * Maps token kinds to handler functions for extensible parsing.
+     */
     public tokenHandlerMap: ParserMap = {
         [TokenKind.HtmlText]: parseHtmlTextNode,
         [TokenKind.HtmlComment]: parseHtmlCommentNode,
@@ -56,6 +67,10 @@ export class RiftParser
         //[TokenKind.HtmlTagEnd]: parseHtmlTagEndNode,
     };
 
+    /**
+     * Creates a new RiftParser for the given source.
+     * @param source The RiftSource to parse.
+     */
     constructor(
         source: RiftSource,
     )
@@ -68,6 +83,10 @@ export class RiftParser
         this.context.pushNode(root);
     }
 
+    /**
+     * Parses the source and returns the root RiftModuleNode AST.
+     * Throws CompilerError on parse errors.
+     */
     public parse(): RiftModuleNode
     {
         // Parse front matter

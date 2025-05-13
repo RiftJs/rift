@@ -9,6 +9,10 @@ import { Logger } from './utils/logger';
 import { RiftParser } from './parser/parser';
 import { getModuleDiagnostics } from './diagnostics/ast';
 
+/**
+ * Entry point for the Rift compiler. Loads a test HTML file, parses it, and prints diagnostics.
+ * Handles and logs compiler errors with stack traces.
+ */
 async function run()
 {
 

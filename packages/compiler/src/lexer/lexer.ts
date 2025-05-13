@@ -10,6 +10,21 @@ import { matterMode } from "./modes/matter.mode";
 import { scriptMode } from "./modes/script.mode";
 import { SourcePosition } from "../utils/source-position";
 
+/**
+ * LexerEventMap defines the events emitted by the Lexer.
+ * - reset: Emitted when the lexer is reset.
+ * - token: Emitted when a new token is parsed.
+ * - error: Emitted when an error occurs during lexing.
+ */
+export type LexerEventMap = {
+    reset: [];
+    token: [Token];
+    error: [Error];
+};
+
+/**
+ * LexerMode enumerates the possible parsing modes for the lexer.
+ */
 export enum LexerMode
 {
     Matter = "Matter",
@@ -26,12 +41,11 @@ export enum LexerMode
     // TemplateString = "templateString",
 };
 
-export type LexerEventMap = {
-    reset: [];
-    token: [Token];
-    error: [Error];
-}
-
+/**
+ * Lexer tokenizes a RiftSource into a stream of tokens, supporting multiple parsing modes.
+ * Maintains a mode stack for context-sensitive lexing (HTML, CSS, Script, etc).
+ * Emits events for token and error handling.
+ */
 export class Lexer
 {
     protected _context: LexerContext;
@@ -49,16 +63,26 @@ export class Lexer
 
     public events: EventEmitter<LexerEventMap> = new EventEmitter();
 
+    /**
+     * Returns the last token parsed, or null if none.
+     */
     public last(): Token | null
     {
         return this._buffer[this._bufferIndex - 1] ?? null;
     }
 
+    /**
+     * Returns the current token, or null if none.
+     */
     public current(): Token | null
     {
         return this._buffer[this._bufferIndex] ?? null;
     }
 
+    /**
+     * Creates a new Lexer for the given source.
+     * @param source The RiftSource to tokenize.
+     */
     constructor(
         source: RiftSource
     )
@@ -67,7 +91,9 @@ export class Lexer
         this._modeStack = [LexerMode.HtmlText];
     }
 
-    // Sets the input string and resets the lexer state
+    /**
+     * Resets the lexer state and mode stack.
+     */
     public reset(): void
     {
         this._context.reset();
@@ -75,10 +101,9 @@ export class Lexer
         this._modeStack = [LexerMode.HtmlText];
     }
 
-    /*
-    * Returns the next token without consuming it.
-    * If there are no more tokens, it returns null.
-    */
+    /**
+     * Peeks at a token at the given offset without consuming it.
+     */
     public peek(offset: number): Token | null
     {
         while (this._bufferIndex + offset >= this._buffer.length)
@@ -95,10 +120,9 @@ export class Lexer
         return this._buffer[this._bufferIndex + offset] ?? null;
     }
 
-    /*
-    * Returns the next token without consuming it.
-    * If there are no more tokens, it returns null.
-    */
+    /**
+     * Returns the next token and advances the buffer index.
+     */
     public next(): Token | null
     {
         const token = this.peek(0);
@@ -110,10 +134,9 @@ export class Lexer
         return token;
     }
 
-    /*
-    * Consumes the current token and returns the next one.
-    * If there are no more tokens, it returns null.
-    */
+    /**
+     * Consumes the specified number of tokens.
+     */
     public consume(amount: number): void
     {
         this._bufferIndex += amount;
@@ -161,16 +184,25 @@ export class Lexer
         this._modeStack.pop();
     }
 
+    /**
+     * Returns the current lexer mode.
+     */
     public getMode(): LexerMode
     {
         return this._modeStack[this._modeStack.length - 1] ?? LexerMode.HtmlText;
     }
 
+    /**
+     * Returns the internal token buffer.
+     */
     public buffer(): Token[]
     {
         return this._buffer;
     }
 
+    /**
+     * Returns the current source position.
+     */
     public position(): SourcePosition
     {
         return this._context.position();
