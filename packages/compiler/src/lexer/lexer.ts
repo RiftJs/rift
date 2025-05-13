@@ -1,787 +1,178 @@
+import EventEmitter from "events";
+import { RiftSource } from "../source/source";
 import { Logger } from "../utils/logger";
-import { LexerError } from "./lexer-error";
-import { CommonTokenTypes, IdentifierToken, Token, TokenPosition, TokenType } from "./tokens";
+import { LexerContext } from "./context";
+import { cssMode } from "./modes/css.mode";
+import { htmlTagMode } from "./modes/html-tag.mode";
+import { htmlTextMode } from "./modes/html-text.mode";
+import { Token } from "./tokens";
+import { matterMode } from "./modes/matter.mode";
+import { scriptMode } from "./modes/script.mode";
+import { SourcePosition } from "../utils/source-position";
 
-export enum LexerState
+export enum LexerMode
 {
-    TextParsing = "TEXT_PARSER",
-    OpenTagParsing = "OPEN_TAG_PARSER",
-    CloseTagParsing = "CLOSE_TAG_PARSER",
-    ScriptParsing = "SCRIPT_PARSER",
-    StyleParsing = "STYLE_PARSER",
+    Matter = "Matter",
+    HtmlText = "HtmlText",
+    HtmlTag = "HtmlTag",
+    Css = "Css",
+    Script = "Script",
+    Rift = "Rift",
 
-    StatementParsing = "STATEMENT_PARSER",
-
-    // Not implemented yet
-    Declaration = "DECLARATION_PARSER",
-    ProcessingInstruction = "PROCESSING_INSTRUCTION_PARSER",
-    Comment = "COMMENT_PARSER",
+    // String = "string",
+    // Comment = "comment",
+    // BlockComment = "blockComment",
+    // Regex = "regex",
+    // TemplateString = "templateString",
 };
+
+export type LexerEventMap = {
+    reset: [];
+    token: [Token];
+    error: [Error];
+}
 
 export class Lexer
 {
-    protected _input: string = "";
-    protected index = 0;
-    protected length = 0;
-    protected line = 1;
-    protected column = 1;
-    protected currentState: LexerState = LexerState.TextParsing;
-
-    protected _lastToken: Token | null = null;
-    protected _currentToken: Token | null = null;
-    protected tokenBuffer: Token[] = [];
-    protected lexerMap: { [K in LexerState]?: () => Token | null } = {
-        // HTML Parsing
-        [LexerState.TextParsing]: () => this.parseText(),
-        [LexerState.OpenTagParsing]: () => this.parseOpenTag(),
-        [LexerState.CloseTagParsing]: () => this.parseCloseTag(),
-        [LexerState.Declaration]: () => this.parseDeclaration(),
-
-        // Rift Statement Parsing
-        [LexerState.StatementParsing]: () => this.parseStatement(),
-        // [LexerState.ProcessingInstruction]: () => this.parseProcessingInstruction(),
-        [LexerState.Comment]: () => this.parseComment(),
+    protected _context: LexerContext;
+    protected _modes: { [K in LexerMode]?: (context: LexerContext) => Token | null } = {
+        [LexerMode.Matter]: matterMode,
+        [LexerMode.HtmlText]: htmlTextMode,
+        [LexerMode.HtmlTag]: htmlTagMode,
+        [LexerMode.Css]: cssMode,
+        [LexerMode.Script]: scriptMode,
     };
+    protected _modeStack: LexerMode[] = [];
+
+    protected _buffer: Token[] = [];
+    protected _bufferIndex = 0;
+
+    public events: EventEmitter<LexerEventMap> = new EventEmitter();
+
+    public last(): Token | null
+    {
+        return this._buffer[this._bufferIndex - 1] ?? null;
+    }
+
+    public current(): Token | null
+    {
+        return this._buffer[this._bufferIndex] ?? null;
+    }
 
     constructor(
-        input: string,
-
+        source: RiftSource
     )
     {
-        this._input = input;
-        this.length = input.length;
+        this._context = new LexerContext(this, source);
+        this._modeStack = [LexerMode.HtmlText];
     }
 
-
-    protected get isEOF(): boolean
+    // Sets the input string and resets the lexer state
+    public reset(): void
     {
-        return this.index >= this.length;
+        this._context.reset();
+        this.events.emit("reset");
+        this._modeStack = [LexerMode.HtmlText];
     }
 
-    protected get canAdvance(): boolean
+    /*
+    * Returns the next token without consuming it.
+    * If there are no more tokens, it returns null.
+    */
+    public peek(offset: number): Token | null
     {
-        return this.index < this.length;
-    }
-
-    /* inline */
-    protected current(): string
-    {
-        return this._input[this.index];
-    }
-
-    /* inline */
-    protected next(): string | null
-    {
-        return this.peek(1);
-    }
-
-    /* inline */
-    protected peek(offset: number): string | null
-    {
-        return this._input[this.index + offset] || null;
-    }
-
-    protected advance(offset: number = 1): void
-    {
-        while (offset-- > 0 && this.canAdvance)
+        while (this._bufferIndex + offset >= this._buffer.length)
         {
-            // Handle \r\n as a single newline
-            if (this.current() === "\r" && this.next() === "\n")
+            const next = this._mode();
+            if (!next)
             {
-                this.index += 2;
-                this.line++;
-                this.column = 1;
-                continue;
+                break;
             }
 
-            if (this.current() === "\n" || this.current() === "\r")
-            {
-                this.index++;
-                this.line++;
-                this.column = 1;
-            } else
-            {
-                this.index++;
-                this.column++;
-            }
-        }
-    }
-
-    // Produces the next token and advances the stream
-    public nextToken(): Token | null
-    {
-        if (this.tokenBuffer.length > 0)
-        {
-            return this.tokenBuffer.shift() || null;
+            this._buffer.push(next);
         }
 
-        let token = this._parseTokenWithState();
-
-
-        return token;
-
+        return this._buffer[this._bufferIndex + offset] ?? null;
     }
 
-    public parseToken(): Token | null
+    /*
+    * Returns the next token without consuming it.
+    * If there are no more tokens, it returns null.
+    */
+    public next(): Token | null
     {
-        let token = this._parseTokenWithState();
+        const token = this.peek(0);
         if (token)
         {
+            this._bufferIndex++;
             Logger.verbose(`Parsed token: ${token?.kind}`, "Lexer");
         }
         return token;
     }
 
-    public lastToken(): Token | null
+    /*
+    * Consumes the current token and returns the next one.
+    * If there are no more tokens, it returns null.
+    */
+    public consume(amount: number): void
     {
-        return this._lastToken;
+        this._bufferIndex += amount;
     }
 
-    public tokenize(): Token[]
+    /*
+    * Lexer Mode Functions
+    */
+
+    // Parses the next token based on the current mode
+    protected _mode(): Token | null
     {
-        let tokens: Token[] = [];
-        while (this.canAdvance)
+        let currentMode = this.getMode();
+        if (!currentMode)
         {
-            const token = this.nextToken();
-            if (token === null)
-            {
-                break;
-            }
-
-            tokens.push(token);
+            throw this._context.error(`Lexer mode is not set`);
         }
 
-        return tokens;
-    }
-
-    public reset(): void
-    {
-        this.index = 0;
-        this.line = 1;
-        this.column = 1;
-        this.currentState = LexerState.TextParsing;
-        this.tokenBuffer = [];
-        this._lastToken = null;
-        this._currentToken = null;
-    }
-
-    // Peeks at the next token without advancing the stream
-    public peekToken(offset: number = 0): Token | null
-    {
-        while (this.tokenBuffer.length <= offset)
+        let modeFunction = this._modes[currentMode];
+        if (!modeFunction)
         {
-            const token = this.parseToken();
-            if (token === null)
-            {
-                return null;
-            }
-
-            this.tokenBuffer.push(token);
+            throw this._context.error(`Lexer mode ${currentMode} is not implemented`);
         }
 
-        return this.tokenBuffer[offset];
-    }
-
-    // Consumes a token we previously peeked. It throws an error if there is no token to consume
-    public consumeToken(amount: number = 1): void
-    {
-        while (amount-- > 0)
+        let token = modeFunction(this._context);
+        if (token)
         {
-            if (this.tokenBuffer.length === 0)
-            {
-                throw this.error("No token to consume");
-            }
-
-            this.tokenBuffer.shift();
+            this.events.emit("token", token);
         }
-    }
-
-
-    // Parses a token from the stream given the current state or the given state
-    protected _parseTokenWithState(state?: LexerState): Token | null
-    {
-        if (state === undefined)
-        {
-            state = this.currentState;
-        }
-
-        if (this.isEOF)
-        {
-            return null;
-        }
-
-        let lexer = this.lexerMap[state];
-        if (lexer === undefined)
-        {
-            throw this.error(`Lexer state ${state} not implemented`);
-        }
-
-        this._lastToken = this._currentToken;
-        let token = lexer();
-        this._currentToken = token;
 
         return token;
     }
 
-    // Sets the current state of the lexer
-    public state(newState: LexerState): void
+    // Pushes a new mode onto the stack
+    public pushMode(mode: LexerMode)
     {
-        this.currentState = newState;
-        Logger.verbose(`State changed to ${newState}`, "Lexer");
+        this._modeStack.push(mode);
+        Logger.warning(`Pushed mode: ${mode}`, "Lexer");
     }
 
-    // Returns the current position in the stream
-    public position(): TokenPosition
+    // Pops the current mode off the stack
+    public popMode()
     {
-        return {
-            line: this.line,
-            column: this.column,
-            offset: this.index,
-        };
+        Logger.warning(`Popped mode: ${this._modeStack[this._modeStack.length - 1]}`, "Lexer");
+        this._modeStack.pop();
     }
 
-    // Creates a new LexerError with the current position
-    // and the given message
-    protected error(message: string): LexerError
+    public getMode(): LexerMode
     {
-        return new LexerError(message, this.position());
+        return this._modeStack[this._modeStack.length - 1] ?? LexerMode.HtmlText;
     }
 
-    // Parses text until a tag is found
-    protected parseText(): Token | null
+    public buffer(): Token[]
     {
-        let text = "";
-
-        Logger.log("Parsing text", "Lexer");
-
-        while (this.canAdvance)
-        {
-            // statements
-            if (this.current() === "@")
-            {
-
-                this.state(LexerState.StatementParsing);
-
-                return this._parseTokenWithState();
-            }
-
-            if (this.current() === "{")
-            {
-                if (text.length > 0)
-                {
-                    return {
-                        kind: TokenType.Text,
-                        position: this.position(),
-                        text,
-                    };
-                }
-                
-                this.advance();
-                return {
-                    kind: TokenType.OpenCurlyBracket,
-                    position: this.position(),
-                }
-            }
-
-            if (this.current() === "}")
-            {
-                if (text.length > 0)
-                {
-                    return {
-                        kind: TokenType.Text,
-                        position: this.position(),
-                        text,
-                    };
-                }
-
-                this.advance();
-                return {
-                    kind: TokenType.CloseCurlyBracket,
-                    position: this.position(),
-                }
-            }
-
-            if (this.current() === "<")
-            {
-                if (
-                    this.next()?.match(/[a-zA-Z0-9]/)
-                )
-                {
-                    this.state(LexerState.OpenTagParsing);
-                    break;
-                }
-
-                if (this.next() === "/")
-                {
-                    this.state(LexerState.CloseTagParsing);
-                    break;
-                }
-
-                if (this.next() === "!")
-                {
-                    if (this.peek(2) === "-" && this.peek(3) === "-")
-                    {
-                        this.state(LexerState.Comment);
-                        break;
-                    }
-
-                    this.state(LexerState.Declaration);
-                    break;
-                }
-
-                if (this.next() === "?")
-                {
-                    this.state(LexerState.ProcessingInstruction);
-                    break;
-                }
-            }
-
-            text += this.current();
-            this.advance();
-        }
-
-        if (text.length > 0)
-        {
-            return {
-                kind: TokenType.Text,
-                position: this.position(),
-                text,
-            };
-        }
-
-        // we found no text.. lets repeat the process
-        return this._parseTokenWithState();
+        return this._buffer;
     }
 
-    // Parses a statement like @for() or @if() @else()
-    // This is not implemented yet
-    protected parseStatement(): Token | null
+    public position(): SourcePosition
     {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-
-        // Parse statement identifier
-        if (this.current() === "@")
-        {
-            this.advance();
-
-            let identifier = this.parseIdentifier(/[a-zA-Z]/, /[^a-zA-Z]/);
-            if (identifier === null)
-            {
-                throw this.error(`Expected identifier in statement, but got '${this.current()}'`);
-            }
-
-            return {
-                kind: TokenType.Statement,
-                position: this.position(),
-                identifier: identifier.name,
-            };
-        }
-
-        const tokenMap: Record<string, CommonTokenTypes> = {
-            "=": TokenType.Equals,
-            "[": TokenType.OpenBracket,
-            "]": TokenType.CloseBracket,
-            "(": TokenType.OpenParenthesis,
-            ")": TokenType.CloseParenthesis,
-
-            "{": TokenType.OpenCurlyBracket,
-            "}": TokenType.CloseCurlyBracket,
-
-            ".": TokenType.Dot,
-            "+": TokenType.Plus,
-            "*": TokenType.Multiply,
-            "-": TokenType.Minus,
-            "/": TokenType.Slash,
-            ",": TokenType.Comma,
-            ";": TokenType.Semicolon,
-            ":": TokenType.Colon,
-            "?": TokenType.QuestionMark,
-            "!": TokenType.ExclamationMark,
-            "&": TokenType.BitwiseAnd,
-            "|": TokenType.BitwiseOr,
-            "^": TokenType.BitwiseXor,
-        };
-
-        const tokenType = tokenMap[this.current()] ?? null;
-        if (tokenType)
-        {
-            this.advance();
-            return {
-                kind: tokenType,
-                position: this.position(),
-            };
-        }
-
-        let identifier = this.parseIdentifier(/[a-zA-Z0-9$_]/, /[^a-zA-Z0-9$_]/);
-        if (identifier)
-        {
-            return identifier;
-        }
-
-        throw this.error(`Unexpected character '${this.current()}' in statement`);
-    }
-
-    // Parses html tags like <tag></tag> or <tag />
-    protected parseOpenTag(): Token | null
-    {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (this.current() === "<")
-        {
-            this.advance();
-            return {
-                kind: TokenType.OpenTag,
-                position: this.position(),
-            };
-        }
-
-        // Close tag
-        if (this.current() === ">")
-        {
-            this.state(LexerState.TextParsing);
-            this.advance();
-            return {
-                kind: TokenType.CloseTag,
-                position: this.position(),
-            };
-        }
-
-        if (this.current() === "/" && this.next() === ">")
-        {
-            this.state(LexerState.TextParsing);
-            this.advance(2);
-            return {
-                kind: TokenType.SelfCloseTag,
-                position: this.position(),
-            };
-        }
-
-        const tokenMap: Record<string, CommonTokenTypes> = {
-            "=": TokenType.Equals,
-            "[": TokenType.OpenBracket,
-            "]": TokenType.CloseBracket,
-            "*": TokenType.Multiply,
-            "(": TokenType.OpenParenthesis,
-            ")": TokenType.CloseParenthesis,
-            ".": TokenType.Dot,
-        }
-
-        const tokenType = tokenMap[this.current()] ?? null;
-        if (tokenType)
-        {
-            this.advance();
-            return {
-                kind: tokenType,
-                position: this.position(),
-            };
-        }
-
-        // parse string literals
-        if (this._input[this.index].match(/["'`]/))
-        {
-            return this.parseStringLiteral();
-        }
-
-        let identifier = this.parseIdentifier(/[a-zA-Z0-9-\.]/, /[\s\/=\[\]<>\*\(\)'"`]/);
-        if (identifier)
-        {
-            return identifier;
-        }
-
-
-        throw this.error(`Unexpected character '${this.current()}' in tag open`);
-    }
-
-    protected parseCloseTag(): Token | null
-    {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        const tokenMap: Record<string, CommonTokenTypes> = {
-            "<": TokenType.OpenTag,
-            "/": TokenType.Slash,
-        }
-
-        let tokenType = tokenMap[this.current()] ?? null;
-        if (tokenType)
-        {
-            this.advance();
-
-            return {
-                kind: tokenType,
-                position: this.position(),
-            };
-        }
-
-        if (this.current() === ">")
-        {
-            this.state(LexerState.TextParsing);
-            this.advance();
-
-            return {
-                kind: TokenType.CloseTag,
-                position: this.position(),
-            };
-        }
-
-        let identifier = this.parseIdentifier(/[a-zA-Z0-9-\.]/, /[\s>]/);
-        if (identifier)
-        {
-            return identifier;
-        }
-
-        throw this.error(`Unexpected character '${this.current()}' in close tag`);
-    }
-
-    protected parseIdentifier(identifierPattern: RegExp, stopPattern: RegExp): IdentifierToken | null
-    {
-        let identifier = "";
-        while (this.canAdvance)
-        {
-            // parse identifier 
-            if (this.current().match(identifierPattern))
-            {
-                identifier += this.current();
-                this.advance();
-                continue;
-            }
-
-            // if space or slash is found, return identifier
-            // and set the state to Text
-            if (this.current().match(stopPattern))
-            {
-                if (identifier.length === 0)
-                {
-                    throw this.error(`Expected identifier in tag open, but got '${this.current()}'`);
-                }
-
-                return {
-                    kind: TokenType.Identifier,
-                    position: this.position(),
-                    name: identifier,
-                };
-            }
-
-            throw this.error(`Unexpected character '${this.current()}' in identifier`);
-        }
-
-        return null;
-    }
-
-    // Parse declaration like <!DOCTYPE html>
-    protected parseDeclaration(): Token | null
-    {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (
-            this._input[this.index] !== '<' ||
-            this._input[this.index + 1] !== '!' ||
-            this._input.slice(this.index + 2, this.index + 9).toUpperCase() !== "DOCTYPE"
-        )
-        {
-            throw this.error(`Expected '<!DOCTYPE html>' declaration, but got '${this._input.slice(this.index, this.index + 10)}'`);
-        }
-        this.advance(9); // advance past <!DOCTYPE
-
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        const name = this.parseIdentifier(/[a-zA-Z]/, /[^a-zA-Z]/); // expects 'html'
-        if (name === null)
-        {
-            throw this.error(`Expected identifier in <!DOCTYPE html>, but got '${this.current()}'`);
-        }
-
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (this.current() !== '>')
-        {
-            throw this.error(`Expected '>' at end of DOCTYPE declaration, but got '${this.current()}'`);
-        }
-        this.advance(); // advance past '>'
-
-        this.state(LexerState.TextParsing);
-
-        return {
-            kind: TokenType.HtmlDeclaration,
-            position: this.position(),
-            declaration: name.name,
-        }
-    }
-
-    protected parseComment(): Token | null
-    {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        // Check if <!-- is found
-        if (this.current() == "<" && this.next() === "!" && this.peek(2) === "-" && this.peek(3) === "-")
-        {
-            this.advance(4);
-            let comment = "";
-
-            while (this.canAdvance)
-            {
-                // parse until -->
-                if (this.current() == "-" && this.next()! == "-" && this.peek(2)! === ">")
-                {
-                    this.advance(3);
-                    break;
-                }
-
-                // escape character
-                if (this.current() === "\\")
-                {
-                    this.advance();
-                    const nextCh = this._input[this.index];
-                    if (nextCh === "-" || nextCh === ">")
-                    {
-                        comment += nextCh;
-                        this.advance();
-                        continue;
-                    }
-
-                    throw this.error(`Invalid escape sequence '\\${nextCh}'`);
-                }
-
-                comment += this.current();
-                this.advance();
-            }
-
-            this.state(LexerState.TextParsing);
-
-            return {
-                kind: TokenType.HtmlComment,
-                position: this.position(),
-                comment: comment,
-            };
-        }
-
-        this.error(`Expected comment, but got '${this.current()}'`);
-
-        return null;
-    }
-
-    protected parseProcessingInstruction(): Token | null
-    {
-        return null;
-    }
-
-    protected parseStringLiteral(): Token | null
-    {
-        Logger.verbose("Parsing string literal", "Lexer");
-
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (this._input[this.index].match(/["'`]/))
-        {
-            const quote = this._input[this.index];
-            this.advance();
-            let value = "";
-            while (this.canAdvance)
-            {
-                const ch = this._input[this.index];
-                if (ch === quote)
-                {
-                    break;
-                }
-
-                // escape character
-                if (ch === "\\")
-                {
-                    this.advance();
-                    const nextCh = this._input[this.index];
-                    if (nextCh === quote || nextCh === "\\" || nextCh === "n" || nextCh === "r" || nextCh === "t")
-                    {
-                        value += nextCh;
-                        this.advance();
-                        continue;
-                    }
-
-                    throw this.error(`Invalid escape sequence '\\${nextCh}'`);
-                }
-
-                value += ch;
-                this.advance();
-            }
-
-            if (this.index >= this.length)
-            {
-                throw this.error(`Unterminated string literal`);
-            }
-
-            this.advance();
-            return {
-                kind: TokenType.String,
-                position: this.position(),
-                value,
-            };
-        }
-
-        return null;
-    }
-
-    // returns true if we parsed a whitespace character, and false if we hit the end of the stream
-    protected skipWhitespaces(): boolean
-    {
-        while (this.canAdvance)
-        {
-            const ch = this._input[this.index];
-            if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r")
-            {
-                this.advance();
-                continue;
-            }
-
-            break;
-        }
-
-        return this.isEOF;
+        return this._context.position();
     }
 };
-
-/*
-*   DEBUG UTILITIES
-*/
-export function tokenValueToString(token: Token): string | null
-{
-    switch (token.kind)
-    {
-        case "TEXT":
-            return token.text;
-        case "IDENTIFIER":
-            return token.name;
-        case "NUMBER":
-            return token.value.toString();
-        case "STRING":
-            return token.value;
-        case "HTML_COMMENT":
-            return token.comment;
-        case "HTML_DECLARATION":
-            return token.declaration;
-        default:
-            return null;
-    }
-}

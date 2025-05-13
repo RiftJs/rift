@@ -1,147 +1,111 @@
-import { EventEmitter } from "events";
-import { CommentNode } from "../ast/comment.node";
-import { RiftDocumentNode } from "../ast/document.node";
-import { ElementAttribute, ElementBinding, ElementDirective, ElementNode } from "../ast/element.node";
-import { RiftNode } from "../ast/node";
-import { TextNode } from "../ast/text.node";
-import { Lexer } from "../lexer/lexer";
-import { Token, TokenType } from "../lexer/tokens";
-import { Logger } from "../utils/logger";
-import { ParserContext } from "./context";
-import { parseComment } from "./nodes/comment.parser";
-import { parseDeclaration } from "./nodes/declaration.parser";
-import { parseElement } from "./nodes/element.parser";
-import { parseText } from "./nodes/text.parser";
-import { ParserError } from "./parser-error";
-import { parseStatement } from "./nodes/statement.parser";
+import EventEmitter from "events";
+import { debugInspectToken } from "../diagnostics/inspect";
+import { RiftModuleNode } from "../document/module.node";
+import { createNode, RiftNode } from "../document/node";
+import { CompilerError } from "../error/error";
+import { Lexer, LexerMode } from "../lexer/lexer";
+import { MatterContentToken, Token, TokenKind } from "../lexer/tokens";
+import { RiftSource } from "../source/source";
+import { RiftParserContext } from "./context";
+import { parseHtmlCommentNode, parseHtmlTagStartNode, parseHtmlTextNode, parseScriptCode } from "./parsers/html.parser";
+import { parseRiftExpression, parseRiftInterpolationStart } from "./parsers/rift.parser";
 
-type ParseHandler<T extends Token = Token> = (context: ParserContext, token: T) => boolean;
+type TokenHandler<T extends Token = Token> = (context: RiftParserContext, token: T) => boolean;
 type ParserMap = {
-    [K in TokenType]?: ParseHandler<Extract<Token, { kind: K }>>;
+    [K in TokenKind]?: TokenHandler<Extract<Token, { kind: K }>>;
 };
 
-type ParserEvents = {
+type RiftParserEvents = {
     // Parser state
     parseStart: [];
     parseComplete: [];
 
     // Generic events
-    error: [ParserError];
+    error: [CompilerError];
     node: [RiftNode];
 
-    // Document events
-    tagOpen: [ElementNode];
-    tagAttribute: [ElementNode, ElementAttribute];
-    tagBinding: [ElementNode, ElementBinding];
-    tagDirective: [ElementNode, ElementDirective];
-    tagClose: [ElementNode];
-    text: [TextNode];
-    comment: [CommentNode];
-    declaration: [RiftDocumentNode];
+    // // Document events
+    // tagOpen: [ElementNode];
+    // tagAttribute: [ElementNode, ElementAttribute];
+    // tagBinding: [ElementNode, ElementBinding];
+    // tagDirective: [ElementNode, ElementDirective];
+    // tagClose: [ElementNode];
+    // text: [TextNode];
+    // comment: [CommentNode];
+    // documentDeclaration: [DocumentDeclaration];
 
-    // rift events
-    blockStart: [RiftNode];
-    blockEnd: [RiftNode];
-    foreachStart: [RiftNode];
-    foreachEnd: [RiftNode];
+    // // rift events
+    // blockStart: [RiftNode];
+    // blockEnd: [RiftNode];
+    // foreachStart: [RiftNode];
+    // foreachEnd: [RiftNode];
 };
 
-export class Parser
+export class RiftParser
 {
+    public context: RiftParserContext;
     // Parser state
-    public events: EventEmitter<ParserEvents> = new EventEmitter<ParserEvents>();
+    public events: EventEmitter<RiftParserEvents> = new EventEmitter<RiftParserEvents>();
 
-    // Parser state
-    protected context: ParserContext;
-
-    public get document(): RiftDocumentNode
-    {
-        return this.context.rootNode;
-    }
-    
-    protected parserMap: ParserMap = {
-        [TokenType.Text]: parseText,
-        [TokenType.OpenTag]: parseElement,
-        [TokenType.HtmlComment]: parseComment,
-        [TokenType.HtmlDeclaration]: parseDeclaration,
-        [TokenType.Statement]: parseStatement,
-        [TokenType.OpenCurlyBracket]: parseStatement,
-        [TokenType.CloseCurlyBracket]: parseStatement,
+    public tokenHandlerMap: ParserMap = {
+        [TokenKind.HtmlText]: parseHtmlTextNode,
+        [TokenKind.HtmlComment]: parseHtmlCommentNode,
+        [TokenKind.HtmlTagStart]: parseHtmlTagStartNode,
+        [TokenKind.ScriptCode]: parseScriptCode,
+        [TokenKind.TemplateInterpolationStart]: parseRiftInterpolationStart,
+        //[TokenKind.HtmlTagEnd]: parseHtmlTagEndNode,
     };
 
     constructor(
-        protected lexer: Lexer
+        source: RiftSource,
     )
     {
-        this.context = new ParserContext(this.lexer, this);
+        let lexer = new Lexer(source);
+        let root = createNode("rift-module", lexer.position(), {
+            source: source,
+        });
+        this.context = new RiftParserContext(this, lexer, root);
+        this.context.pushNode(root);
     }
 
-    public parse(): RiftDocumentNode
+    public parse(): RiftModuleNode
     {
+        // Parse front matter
+        this.context.lexer.pushMode(LexerMode.Matter);
+        let matterContent = this.context.lexer.next() as MatterContentToken
+        if (matterContent === null)
+        {
+            throw this.context.error("Unexpected end of file");
+        }
+        console.log("Matter content", matterContent.content);
+        this.context.lexer.popMode();
+
         this.events.emit("parseStart");
-        while (this.parseNode())
+        let lexer = this.context.lexer;
+        while (true)
         {
+            let token = lexer.next();
+            if (token === null)
+            {
+                break;
+            }
+
+            let parser = this.tokenHandlerMap[token.kind] as TokenHandler<Token>;
+            if (!parser)
+            {
+                console.log("Token:", debugInspectToken(token));
+                throw this.context.error(`Unexpected token: ${token.kind}`, token);
+            }
+
+            if (!parser(this.context, token))
+            {
+                throw this.context.error(`Error parsing token: ${token.kind}`, token);
+            }
+
         }
 
-        // Validate that the current node is the root node, after parsing
-        if (this.context.currentNode !== this.context.rootNode)
-        {
-            throw this.context.error(`Unexpected end of file, expected closing tag for <${this.context.currentNode.kind}> but got none`, this.context.currentNode.position);
-        }
-
-        this.events.emit("parseComplete");
-        return this.context.rootNode;
+        return this.context.module;
     }
 
-    public parseNode(): boolean
-    {
-        let token = this.lexer.nextToken();
-        if (token === null)
-        {
-            return false;
-        }
 
-        let parser = this.parserMap[token.kind] as ParseHandler<Token>;
-
-        if (!parser)
-        {
-            throw this.context.error(`Unexpected token: ${token.kind}`, token.position);
-        }
-
-        return parser(this.context, token);
-    }
-
-    public debugPrint()
-    {
-        debugAST(this.context.rootNode);
-    }
-}
-
-/*
-* Debug utilities
-*/
-function debugAST(document: RiftDocumentNode)
-{
-    Logger.log("AST:");
-    // Iterate through the AST and print out the nodes in a tree-like structure
-    function printNode(node: RiftNode, depth: number = 0)
-    {
-        const indent = "    ".repeat(depth);
-        Logger.log(`${indent}${node.kind}`);
-
-        if (node.kind === "element")
-        {
-            Logger.log(`${indent}    - [${node.name}]`);
-            // Logger.log(`${indent}  Attributes: ${JSON.stringify(node.attributes)}`);
-            // Logger.log(`${indent}  Bindings: ${JSON.stringify(node.bindings)}`);
-            // Logger.log(`${indent}  Directives: ${JSON.stringify(node.directives)}`);
-        }
-
-        for (const child of node.children)
-        {
-            printNode(child, depth + 1);
-        }
-    }
-    printNode(document);
-    Logger.log("AST END");
-}
+};

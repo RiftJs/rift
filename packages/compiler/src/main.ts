@@ -1,145 +1,132 @@
 import 'source-map-support/register';
+import { getDiagnosticMessage } from './diagnostics/message';
+import { CompilerError } from './error/error';
+import { Lexer, LexerMode } from './lexer/lexer';
+import { RiftSource } from './source/source';
+import { inspectToken } from './diagnostics/inspect';
+import { TokenKind } from './lexer/tokens';
+import { Logger } from './utils/logger';
+import { RiftParser } from './parser/parser';
+import { getModuleDiagnostics } from './diagnostics/ast';
 
-
-import { readFileSync, writeFileSync } from "fs";
-import { RiftDocumentNode } from './ast/document.node';
-import { EvaluatorContext } from './evaluator/context';
-import { Evaluator } from './evaluator/evaluator';
-import { Lexer } from "./lexer/lexer";
-import { LexerError } from "./lexer/lexer-error";
-import { Parser } from './parser/parser';
-import { ParserError } from './parser/parser-error';
-import { Logger } from "./utils/logger";
-import { EvaluationError } from './evaluator/error';
-import { inspect } from 'util';
-
-
-function renderFile(path: string, data: any): string
+async function run()
 {
-    let template = readFileSync(path).toString();
-
-
-    let lexer = new Lexer(template);
-    let parser = new Parser(lexer);
-
 
     try
     {
+        let source = RiftSource.fromFile("./src/tests/test.html");
 
+        let parser = new RiftParser(source)
 
+        let module = parser.parse();
 
-        let document = parser.parse();
-        // debugAST(document);
-
-        let evaluator = new Evaluator(document);
-
-        let context = new EvaluatorContext(evaluator, data);
-
-        let vdomDocument = evaluator.evaluate(data);
-        
-
-        console.log("VDOM Document:", inspect(vdomDocument, { showHidden: false, depth: Infinity, colors: true }));
-
-
-        return vdomDocument.toHTML({
-            renderMode: "minify",
-        });
-        // console.log("Lexer state:", inspect(lexer, { showHidden: false, depth: Infinity, colors: true }));
-        // console.log("Parser state:", inspect(parser, { showHidden: false, depth: Infinity, colors: true }));
-
-        // while (true)
-        // {
-        //     let token = lexer.nextToken();
-        //     if (token === null)
-        //     {
-        //         Logger.log("End of file");
-        //         break;
-        //     }
-        //     let value = tokenValueToString(token);
-        //     // Safely format value for console output
-
-        //     Logger.verbose(`${token.kind}[${value}]`);
-
-        // }
+        let message = getModuleDiagnostics(module);
+        console.log(message);
 
     }
     catch (e: any)
     {
-        if (e instanceof LexerError || e instanceof ParserError)
+        if (e instanceof CompilerError)
         {
-
-            const lines = template.toString().split("\n");
-            const lineNum = e.position.line;
-            const colNum = e.position.column;
-            const codeLine = lines[lineNum - 1] || "";
-
-            Logger.error(`--> ${path}:${lineNum}:${colNum}`);
-            Logger.error(`     ${codeLine}`);
-            Logger.error(`     ${" ".repeat(colNum - 1)}^`);
-
+            let message = getDiagnosticMessage(e);
+            console.log(message);
+            console.error(e.stack);
         }
-
-        if (e instanceof EvaluationError)
-        {
-            const lines = template.toString().split("\n");
-            const lineNum = e.position?.line || 0;
-            const colNum = Math.max(e.position?.column || 0, 1);
-            const codeLine = lines[lineNum - 1] || "";
-
-            Logger.error(`--> ${path}:${lineNum}:${colNum}`);
-            Logger.error(`     ${codeLine}`);
-            Logger.error(`     ${" ".repeat(colNum - 1)}^`);
-        }
-
-        Logger.error(e);
-
     }
+    
+    //let lexer = new Lexer(source);
 
-    // parser.debugPrint();
-    //debugAST(parser.document);
-    return "";
+    // try
+    // {
+    //     while (true)
+    //     {
+    //         let token = lexer.next();
+
+    //         if (token === null)
+    //         {
+    //             console.log("End of file");
+    //             break;
+    //         }
+
+    //         Logger.debug(tokenInspect(token));
+
+    //         // Upon first parsing we want to push the matter mode out
+    //         if (token.kind == TokenKind.MatterContent)
+    //         {
+    //             lexer.popMode();
+    //             lexer.pushMode(LexerMode.HtmlText);
+    //         }
+
+    //         if (token.kind == TokenKind.ScriptCode)
+    //         {
+    //             console.log("Script code", token.code);
+
+    //         }
+    //         // debug <style> tags
+    //         if (token.kind == TokenKind.HtmlTagStart)
+    //         {
+    //             lexer.pushMode(LexerMode.HtmlTag);
+    //         }
+
+    //         if (token.kind == TokenKind.HtmlTagStart)
+    //         {
+    //             let id = lexer.peek(0);
+    //             console.log("peek", tokenInspect(id));
+    //             if (id && id?.kind == TokenKind.Identifier)
+    //             {
+    //                 if (id.identifier == "style")
+    //                 {
+    //                     Logger.debug(tokenInspect(lexer.next()));
+    //                     Logger.debug(tokenInspect(lexer.next()));
+    //                     lexer.popMode();
+    //                     lexer.pushMode(LexerMode.Css);
+    //                 }
+
+    //                 if (id.identifier == "script")
+    //                 {
+    //                     Logger.debug(tokenInspect(lexer.next()));
+    //                     Logger.debug(tokenInspect(lexer.next()));
+    //                     lexer.popMode();
+    //                     lexer.pushMode(LexerMode.Script);
+    //                 }
+    //             }
+    //         }
+
+    //         // debug </style> tags
+    //         if (token.kind == TokenKind.GreaterThan)
+    //         {
+    //             // if we're in css mode, pop the mode
+    //             if (lexer.getMode() == LexerMode.Css)
+    //             {
+    //                 lexer.popMode();
+    //                 lexer.pushMode(LexerMode.HtmlTag);
+    //             }
+    //         }
+
+    //         if (token.kind == TokenKind.HtmlTagEnd)
+    //         {
+    //             lexer.popMode();
+    //         }
+
+    //     }
+    // }
+    // catch (e: any)
+    // {
+    //     if (e instanceof CompilerError)
+    //     {
+    //         let message = getDiagnosticMessage(e);
+    //         console.log(message);
+    //         console.error(e.stack);
+    //     }
+
+    // }
+
 }
 
-
-let contents = renderFile("./src/tests/test.html", {
-    siteTitle: "My Site",
-    posts: [
-        { title: "Post 1", content: "Content 1" },
-        { title: "Post 2", content: "Content 2" },
-        { title: "Post 3", content: "Content 3" },
-        { title: "Post 1", content: "Content 1" },
-        { title: "Post 2", content: "Content 2" },
-        { title: "Post 3", content: "Content 3" },
-        { title: "Post 1", content: "Content 1" },
-        { title: "Post 2", content: "Content 2" },
-        { title: "Post 3", content: "Content 3" },
-        { title: "Post 1", content: "Content 1" },
-        { title: "Post 2", content: "Content 2" },
-        { title: "Post 3", content: "Content 3" },
-        { title: "Post 1", content: "Content 1" },
-        { title: "Post 2", content: "Content 2" },
-        { title: "Post 3", content: "Content 3" },
-        { title: "Post 1", content: "Content 1" },
-        { title: "Post 2", content: "Content 2" },
-        { title: "Post 3", content: "Content 3" },
-    ]
-})
-
-writeFileSync("./output.html", contents, "utf-8");
-
-
-function debugAST(document: RiftDocumentNode)
+run().then(() =>
 {
-    Logger.log("AST:");
-    const seen = new WeakSet();
-    Logger.log(JSON.stringify(document, (key, value) =>
-    {
-        if (typeof value === "object" && value !== null)
-        {
-            if (seen.has(value)) return undefined; // 👈 skip circular refs
-            seen.add(value);
-        }
-        return value;
-    }, 4));
-    Logger.log("AST END");
-}
+    console.log("Done");
+}).catch((err) =>
+{
+    console.error(err);
+});

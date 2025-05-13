@@ -1,87 +1,111 @@
-import { Logger } from "../utils/logger";
-import { LexerError } from "./lexer-error";
-import { CommonTokenTypes, IdentifierToken, Token, TokenPosition, TokenType } from "./tokens";
+import { CompilerError } from "../error/error";
+import { RiftSource } from "../source/source";
+import { SourcePosition } from "../utils/source-position";
+import { Lexer } from "./lexer";
+import { TokenKindOf, TokenOfKind } from "./tokens";
 
-export enum LexerState
+
+/**
+ * LexerContext manages the state and navigation of the input stream during lexical analysis.
+ *
+ * It tracks the current position (index, line, column) in the input string, provides methods
+ * for peeking and advancing through characters, and emits tokens and errors as needed.
+ *
+ * This context is used by the lexer to tokenize the input source code, handling newlines,
+ * whitespace, and error reporting in a consistent manner.
+ */
+export class LexerContext
 {
-    TextParsing = "TEXT_PARSER",
-    OpenTagParsing = "OPEN_TAG_PARSER",
-    CloseTagParsing = "CLOSE_TAG_PARSER",
-    ScriptParsing = "SCRIPT_PARSER",
-    StyleParsing = "STYLE_PARSER",
+    /** The full input string being lexed. */
+    public input: string = "";
+    /** The current index (character offset) in the input string. */
+    public index = 0;
+    /** The total length of the input string. */
+    public length = 0;
+    /** The current line number (1-based). */
+    public line = 1;
+    /** The current column number (1-based). */
+    public column = 1;
 
-    // Not implemented yet
-    Declaration = "DECLARATION_PARSER",
-    ProcessingInstruction = "PROCESSING_INSTRUCTION_PARSER",
-    Comment = "COMMENT_PARSER",
-};
+    /**
+     * stored state for the lexer.
+     * This is a record that can hold any additional data needed during lexing.
+     */
+    protected state: Record<string, any> = {};
 
-export class Lexer
-{
-    protected _input: string = "";
-    protected index = 0;
-    protected length = 0;
-    protected line = 1;
-    protected column = 1;
-    protected currentState: LexerState = LexerState.TextParsing;
-
-    protected _lastToken: Token | null = null;
-    protected _currentToken: Token | null = null;
-    protected tokenBuffer: Token[] = [];
-    protected lexerMap: { [K in LexerState]?: () => Token | null } = {
-        [LexerState.TextParsing]: () => this.parseText(),
-        [LexerState.OpenTagParsing]: () => this.parseOpenTag(),
-        [LexerState.CloseTagParsing]: () => this.parseCloseTag(),
-
-        [LexerState.Declaration]: () => this.parseDeclaration(),
-        // [LexerState.ProcessingInstruction]: () => this.parseProcessingInstruction(),
-        [LexerState.Comment]: () => this.parseComment(),
-    };
-
+    /**
+     * The remaining input string from the current index to the end.
+     * This is a computed property that returns the substring from the current index.
+     */
+    public get remaining(): string
+    {
+        return this.input.substring(this.index);
+    }
+    /**
+     * Creates a new LexerContext for the given lexer and source.
+     * @param lexer - The parent Lexer instance.
+     * @param source - The Source object containing the code.
+     */
     constructor(
-        input: string,
-
+        /** The parent Lexer instance. */
+        public lexer: Lexer,
+        /** The Source object containing the code. */
+        public source: RiftSource,
     )
     {
-        this._input = input;
-        this.length = input.length;
+        this.input = source.code;
+        this.length = source.code.length;
+        this.index = 0;
+        this.line = 1;
+        this.column = 1;
+        this.state = {};
     }
 
-
-    protected get isEOF(): boolean
+    /**
+     * Resets the context to the beginning of the input stream.
+     * Sets index, line, and column to their initial values.
+     */
+    public reset(): void
     {
-        return this.index >= this.length;
+        this.index = 0;
+        this.line = 1;
+        this.column = 1;
+        this.state = {};
     }
 
-    protected get canAdvance(): boolean
+    /**
+     * Returns the current character at the context's index, or null if out of bounds.
+     * @returns The current character or null.
+     */
+    public current(): string | null
     {
-        return this.index < this.length;
+        return this.input[this.index] ?? null;
     }
 
-    /* inline */
-    protected current(): string
+    /**
+     * Peeks ahead in the input stream by the given offset and returns the character, or null if out of bounds.
+     * @param offset - The number of characters to look ahead.
+     * @returns The character at the offset or null.
+     */
+    public peek(offset: number): string | null
     {
-        return this._input[this.index];
+        return this.input[this.index + offset] ?? null;
     }
 
-    /* inline */
-    protected next(): string | null
+    /**
+     * Advances the input stream by the specified number of characters, updating line and column numbers.
+     * Handles Windows (\r\n) and Unix (\n) newlines correctly.
+     * @param offset - The number of characters to advance.
+     * @returns True if not at the end of the input, false otherwise.
+     */
+    public advance(offset: number): boolean
     {
-        return this.peek(1);
-    }
-
-    /* inline */
-    protected peek(offset: number): string | null
-    {
-        return this._input[this.index + offset] || null;
-    }
-
-    protected advance(offset: number = 1): void
-    {
-        while (offset-- > 0 && this.canAdvance)
+        while (offset-- > 0 && this.index < this.length)
         {
+            //console.log("advancing", offset, "[" + escapeWhitespace(this.input[this.index]) + "]");
+
             // Handle \r\n as a single newline
-            if (this.current() === "\r" && this.next() === "\n")
+            if (this.input[this.index] === "\r" && this.input[this.index + 1] === "\n")
             {
                 this.index += 2;
                 this.line++;
@@ -89,7 +113,7 @@ export class Lexer
                 continue;
             }
 
-            if (this.current() === "\n" || this.current() === "\r")
+            if (this.input[this.index] === "\n" || this.input[this.index] === "\r")
             {
                 this.index++;
                 this.line++;
@@ -100,553 +124,135 @@ export class Lexer
                 this.column++;
             }
         }
+
+        return this.index < this.length;
     }
 
-    // Produces the next token and advances the stream
-    public nextToken(): Token | null
+    /**
+     * Returns the current position in the input stream as a SourcePosition object.
+     * @returns The current SourcePosition (source, line, column, offset).
+     */
+    public position(offset: number = 0, length: number = 1): SourcePosition
     {
-        if (this.tokenBuffer.length > 0)
+        if (offset == 0)
         {
-            return this.tokenBuffer.shift() || null;
+            return {
+                source: this.source,
+                line: this.line,
+                column: this.column,
+                offset: this.index,
+                length: length,
+            };
         }
 
-        return this._parseToken();
-    }
+        // Walk back or forth to the offset
 
-    public lastToken(): Token | null
-    {
-        return this._lastToken;
-    }
-
-    public tokenize(): Token[]
-    {
-        let tokens: Token[] = [];
-        while (this.canAdvance)
+        let line = this.line;
+        let column = this.column;
+        let index = this.index + offset;
+        let input = this.input;
+        let inputLength = this.length;
+        let i = index;
+        let char = input[i];
+        // Walking forward
+        if (offset >= 0)
         {
-            const token = this.nextToken();
-            if (token === null)
+            i = this.index;
+            let target = this.index + offset;
+
+            while (i < target && i < inputLength)
             {
-                break;
+                char = input[i];
+                if (char === "\n" || char === "\r")
+                {
+                    if (char === "\r" && input[i + 1] === "\n") i++;
+                    line++;
+                    column = 1;
+                }
+                else column++;
+                i++;
             }
-
-            tokens.push(token);
         }
-
-        return tokens;
-    }
-
-    public reset(): void
-    {
-        this.index = 0;
-        this.line = 1;
-        this.column = 1;
-        this.currentState = LexerState.TextParsing;
-        this.tokenBuffer = [];
-        this._lastToken = null;
-        this._currentToken = null;
-    }
-
-    // Peeks at the next token without advancing the stream
-    public peekToken(offset: number = 0): Token | null
-    {
-        while (this.tokenBuffer.length <= offset)
+        // Walking backward
+        else
         {
-            const token = this._parseToken();
-            if (token === null)
+            i = this.index;
+            let target = this.index + offset;
+
+            while (i > target && i >= 0)
             {
-                return null;
+                i--;
+                char = input[i];
+                if (char === "\n" || char === "\r")
+                {
+                    line--; // approximation
+                    column = 1; // or unknown, unless you re-scan previous line
+                }
+                else column = Math.max(column - 1, 1);
             }
-
-            this.tokenBuffer.push(token);
         }
-
-        return this.tokenBuffer[offset];
-    }
-
-    // Consumes a token we previously peeked. It throws an error if there is no token to consume
-    public consumeToken(amount: number = 1): void
-    {
-        while (amount-- > 0)
-        {
-            if (this.tokenBuffer.length === 0)
-            {
-                throw this.error("No token to consume");
-            }
-
-            this.tokenBuffer.shift();
-        }
-    }
-
-
-    // Parses a token from the stream given the current state or the given state
-    protected _parseToken(state?: LexerState): Token | null
-    {
-        if (state === undefined)
-        {
-            state = this.currentState;
-        }
-
-        if (this.isEOF)
-        {
-            return null;
-        }
-
-        let lexer = this.lexerMap[state];
-        if (lexer === undefined)
-        {
-            throw this.error(`Lexer state ${state} not implemented`);
-        }
-
-        this._lastToken = this._currentToken;
-        let token = lexer();
-        this._currentToken = token;
-
-        Logger.verbose(`Parsed token: ${token?.kind}`, "Lexer");
-
-        return token;
-    }
-
-    // Sets the current state of the lexer
-    protected state(newState: LexerState): void
-    {
-        this.currentState = newState;
-        Logger.log(`State changed to ${newState}`, "Lexer");
-    }
-
-    // Returns the current position in the stream
-    public position(): TokenPosition
-    {
         return {
-            line: this.line,
-            column: this.column,
-            offset: this.index,
+            source: this.source,
+            line: line,
+            column: column,
+            offset: index,
+            length: length,
         };
+
     }
 
-    // Creates a new LexerError with the current position
-    // and the given message
-    protected error(message: string): LexerError
+    /**
+     * Creates and emits a CompilerError at the current position.
+     * @param message - The error message.
+     * @param length - The length of the error span (default: 1).
+     * @returns The created CompilerError instance.
+     */
+    public error(message: string, position?: SourcePosition): CompilerError
     {
-        return new LexerError(message, this.position());
+        let error = new CompilerError("LexerError", message, position ?? this.position());
+        this.lexer.events.emit("error", error);
+        return error;
     }
 
-    // Parses text until a tag is found
-    protected parseText(): Token | null
+    /**
+     * Creates and emits a token of the specified kind and data at the current position.
+     * @param kind - The kind of token to create.
+     * @param data - Additional data for the token (excluding kind and position).
+     * @returns The created token of the specified kind.
+     */
+    public token<K extends TokenKindOf>(
+        kind: K,
+        data: Omit<TokenOfKind<K>, "kind" | "position"> = {} as Omit<TokenOfKind<K>, "kind" | "position">,
+        length: number = 1,
+    ): TokenOfKind<K>
     {
-        let text = "";
+        let token = {
+            kind: kind,
+            position: this.position(-length, length),
+            ...data
+        } as TokenOfKind<K>;
 
-
-        while (this.canAdvance)
-        {
-            if (this.current() === "<")
-            {
-                if (
-                    this.next()?.match(/[a-zA-Z0-9]/)
-                )
-                {
-                    this.state(LexerState.OpenTagParsing);
-                    break;
-                }
-
-                if (this.next() === "/")
-                {
-                    this.state(LexerState.CloseTagParsing);
-                    break;
-                }
-
-                if (this.next() === "!")
-                {
-                    if (this.peek(2) === "-" && this.peek(3) === "-")
-                    {
-                        this.state(LexerState.Comment);
-                        break;
-                    }
-
-                    this.state(LexerState.Declaration);
-                    break;
-                }
-
-                if (this.next() === "?")
-                {
-                    this.state(LexerState.ProcessingInstruction);
-                    break;
-                }
-            }
-
-            text += this.current();
-            this.advance();
-        }
-
-        if (text.length > 0)
-        {
-            return {
-                kind: TokenType.Text,
-                position: this.position(),
-                text,
-            };
-        }
-
-        // we found no text.. lets repeat the process
-        return this.nextToken();
+        this.lexer.events.emit("token", token);
+        return token as TokenOfKind<K>;
     }
 
-    // Parses html tags like <tag></tag> or <tag />
-    protected parseOpenTag(): Token | null
+    public eof(): boolean
     {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (this.current() === "<")
-        {
-            this.advance();
-            return {
-                kind: TokenType.OpenTag,
-                position: this.position(),
-            };
-        }
-
-        // Close tag
-        if (this.current() === ">")
-        {
-            this.state(LexerState.TextParsing);
-            this.advance();
-            return {
-                kind: TokenType.CloseTag,
-                position: this.position(),
-            };
-        }
-
-        if (this.current() === "/" && this.next() === ">")
-        {
-            this.state(LexerState.TextParsing);
-            this.advance(2);
-            return {
-                kind: TokenType.SelfCloseTag,
-                position: this.position(),
-            };
-        }
-
-        const tokenMap: Record<string, CommonTokenTypes> = {
-            "=": TokenType.Equals,
-            "[": TokenType.OpenBracket,
-            "]": TokenType.CloseBracket,
-            "*": TokenType.Multiply,
-            "(": TokenType.OpenParenthesis,
-            ")": TokenType.CloseParenthesis,
-            ".": TokenType.Dot,
-        }
-
-        const tokenType = tokenMap[this.current()] ?? null;
-        if (tokenType)
-        {
-            this.advance();
-            return {
-                kind: tokenType,
-                position: this.position(),
-            };
-        }
-
-        // parse string literals
-        if (this._input[this.index].match(/["'`]/))
-        {
-            return this.parseStringLiteral();
-        }
-
-        let identifier = this.parseIdentifier(/[a-zA-Z0-9-\.]/, /[\s\/=\[\]<>\*\(\)'"`]/);
-        if (identifier)
-        {
-            return identifier;
-        }
-
-
-        throw this.error(`Unexpected character '${this.current()}' in tag open`);
+        return this.index >= this.length;
     }
 
-    protected parseCloseTag(): Token | null
+    public getState<T>(key: string, defaultValue?: T): T
     {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        const tokenMap: Record<string, CommonTokenTypes> = {
-            "<": TokenType.OpenTag,
-            "/": TokenType.Slash,
-        }
-
-        let tokenType = tokenMap[this.current()] ?? null;
-        if (tokenType)
-        {
-            this.advance();
-
-            return {
-                kind: tokenType,
-                position: this.position(),
-            };
-        }
-
-        if (this.current() === ">")
-        {
-            this.state(LexerState.TextParsing);
-            this.advance();
-
-            return {
-                kind: TokenType.CloseTag,
-                position: this.position(),
-            };
-        }
-
-        let identifier = this.parseIdentifier(/[a-zA-Z0-9-\.]/, /[\s>]/);
-        if (identifier)
-        {
-            return identifier;
-        }
-
-        throw this.error(`Unexpected character '${this.current()}' in close tag`);
+        return this.state[key] ?? defaultValue;
     }
 
-    protected parseIdentifier(identifierPattern: RegExp, stopPattern: RegExp): IdentifierToken | null
+    public setState<T = any>(key: string, value: T): void
     {
-        let identifier = "";
-        while (this.canAdvance)
-        {
-            // parse identifier 
-            if (this.current().match(identifierPattern))
-            {
-                identifier += this.current();
-                this.advance();
-                continue;
-            }
-
-            // if space or slash is found, return identifier
-            // and set the state to Text
-            if (this.current().match(stopPattern))
-            {
-                if (identifier.length === 0)
-                {
-                    throw this.error(`Expected identifier in tag open, but got '${this.current()}'`);
-                }
-
-                return {
-                    kind: TokenType.Identifier,
-                    position: this.position(),
-                    name: identifier,
-                };
-            }
-
-            throw this.error(`Unexpected character '${this.current()}' in identifier`);
-        }
-
-        return null;
+        this.state[key] = value;
     }
 
-    // Parse declaration like <!DOCTYPE html>
-    protected parseDeclaration(): Token | null
+    public clearState(key: string): void
     {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (
-            this._input[this.index] !== '<' ||
-            this._input[this.index + 1] !== '!' ||
-            this._input.slice(this.index + 2, this.index + 9).toUpperCase() !== "DOCTYPE"
-        )
-        {
-            throw this.error(`Expected '<!DOCTYPE html>' declaration, but got '${this._input.slice(this.index, this.index + 10)}'`);
-        }
-        this.advance(9); // advance past <!DOCTYPE
-
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        const name = this.parseIdentifier(/[a-zA-Z]/, /[^a-zA-Z]/); // expects 'html'
-        if (name === null)
-        {
-            throw this.error(`Expected identifier in <!DOCTYPE html>, but got '${this.current()}'`);
-        }
-
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (this.current() !== '>')
-        {
-            throw this.error(`Expected '>' at end of DOCTYPE declaration, but got '${this.current()}'`);
-        }
-        this.advance(); // advance past '>'
-
-        this.state(LexerState.TextParsing);
-
-        return {
-            kind: TokenType.HtmlDeclaration,
-            position: this.position(),
-            declaration: name.name,
-        }
-    }
-
-    protected parseComment(): Token | null
-    {
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        // Check if <!-- is found
-        if (this.current() == "<" && this.next() === "!" && this.peek(2) === "-" && this.peek(3) === "-")
-        {
-            this.advance(4);
-            let comment = "";
-
-            while (this.canAdvance)
-            {
-                // parse until -->
-                if (this.current() == "-" && this.next()! == "-" && this.peek(2)! === ">")
-                {
-                    this.advance(3);
-                    break;
-                }
-
-                // escape character
-                if (this.current() === "\\")
-                {
-                    this.advance();
-                    const nextCh = this._input[this.index];
-                    if (nextCh === "-" || nextCh === ">")
-                    {
-                        comment += nextCh;
-                        this.advance();
-                        continue;
-                    }
-
-                    throw this.error(`Invalid escape sequence '\\${nextCh}'`);
-                }
-
-                comment += this.current();
-                this.advance();
-            }
-
-            this.state(LexerState.TextParsing);
-
-            return {
-                kind: TokenType.HtmlComment,
-                position: this.position(),
-                comment: comment,
-            };
-        }
-
-        this.error(`Expected comment, but got '${this.current()}'`);
-
-        return null;
-    }
-
-    protected parseProcessingInstruction(): Token | null
-    {
-        return null;
-    }
-
-    protected parseStringLiteral(): Token | null
-    {
-        Logger.verbose("Parsing string literal", "Lexer");
-
-        if (this.skipWhitespaces())
-        {
-            return null;
-        }
-
-        if (this._input[this.index].match(/["'`]/))
-        {
-            const quote = this._input[this.index];
-            this.advance();
-            let value = "";
-            while (this.canAdvance)
-            {
-                const ch = this._input[this.index];
-                if (ch === quote)
-                {
-                    break;
-                }
-
-                // escape character
-                if (ch === "\\")
-                {
-                    this.advance();
-                    const nextCh = this._input[this.index];
-                    if (nextCh === quote || nextCh === "\\" || nextCh === "n" || nextCh === "r" || nextCh === "t")
-                    {
-                        value += nextCh;
-                        this.advance();
-                        continue;
-                    }
-
-                    throw this.error(`Invalid escape sequence '\\${nextCh}'`);
-                }
-
-                value += ch;
-                this.advance();
-            }
-
-            if (this.index >= this.length)
-            {
-                throw this.error(`Unterminated string literal`);
-            }
-
-            this.advance();
-            return {
-                kind: TokenType.String,
-                position: this.position(),
-                value,
-            };
-        }
-
-        return null;
-    }
-
-    // returns true if we parsed a whitespace character, and false if we hit the end of the stream
-    protected skipWhitespaces(): boolean
-    {
-        while (this.canAdvance)
-        {
-            const ch = this._input[this.index];
-            if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r")
-            {
-                this.advance();
-                continue;
-            }
-
-            break;
-        }
-
-        return this.isEOF;
+        delete this.state[key];
     }
 };
-
-/*
-*   DEBUG UTILITIES
-*/
-export function tokenValueToString(token: Token): string | null
-{
-    switch (token.kind)
-    {
-        case "TEXT":
-            return token.text;
-        case "IDENTIFIER":
-            return token.name;
-        case "NUMBER":
-            return token.value.toString();
-        case "STRING":
-            return token.value;
-        case "HTML_COMMENT":
-            return token.comment;
-        case "HTML_DECLARATION":
-            return token.declaration;
-        default:
-            return null;
-    }
-}

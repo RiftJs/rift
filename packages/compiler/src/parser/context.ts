@@ -1,32 +1,35 @@
-import { RiftDocumentNode } from "../ast/document.node";
-import { node, RiftNode, NodeKind, NodeType } from "../ast/node";
+import { RiftModuleNode } from "../document/module.node";
+import { RiftNode, RiftNodeKind, RiftNodeType } from "../document/node";
+import { CompilerError } from "../error/error";
 import { Lexer } from "../lexer/lexer";
-import { Token, TokenKind, TokenPosition } from "../lexer/tokens";
-import { Parser } from "./parser";
-import { ParserError } from "./parser-error";
+import { Token, TokenKind } from "../lexer/tokens";
+import { RiftParser } from "./parser";
 
-type ParserNodeDataMinimal<K extends NodeKind> = Omit<NodeType<K>, "kind" | "children" | "position" | "parent"> & Partial<Pick<NodeType<K>, "children">>;
-
-export class ParserContext
+export class RiftParserContext
 {
-
-    // Parser state
-    public rootNode: RiftDocumentNode = node("document", { line: 1, column: 1, offset: 0 }, { declarations: [] });
-    public currentNode: RiftNode = this.rootNode;
+    public nodeStack: RiftNode[] = [];
 
     constructor(
+        public parser: RiftParser,
         public lexer: Lexer,
-        public parser: Parser,
+        public module: RiftModuleNode,
     )
     {
     }
 
+    public error(message: string, token?: Token): CompilerError
+    {
+        let error = new CompilerError("ParserError", message, token?.position ?? this.lexer.position());
+        this.parser.events.emit("error", error);
+        return error;
+    }
+
     public expect<T extends TokenKind>(type: T, offset: number = 0): Extract<Token, { kind: T }>
     {
-        const token = this.lexer.peekToken(offset);
+        const token = this.lexer.peek(offset);
         if (token === null || token.kind !== type)
         {
-            throw this.error(`Expected token of type ${type}, but got ${token ? token.kind : "null"}`, this.lexer.position());
+            throw this.error(`Expected token of type ${type}, but got ${token ? token.kind : "null"}`, token ?? undefined);
         }
 
         return token as Extract<Token, { kind: T }>;
@@ -34,52 +37,42 @@ export class ParserContext
 
     public consume(amount: number = 1): void
     {
-        this.lexer.consumeToken(amount);
+        this.lexer.consume(amount);
     }
 
     public peek(offset: number = 0): Token | null
     {
-        return this.lexer.peekToken(offset);
+        return this.lexer.peek(offset);
     }
 
-    public parentNodeToCurrent(node: RiftNode): void
+    public next(): Token | null
     {
-        this.currentNode.children.push(node);
-        node.parent = this.currentNode;
-        this.parser.events.emit("node", node);
+        return this.lexer.next();
     }
 
-    public addNodeToCurrent(node: RiftNode): void
+    public getCurrentNode<K extends RiftNodeKind>(): RiftNodeType<K>
     {
-        this.currentNode.children.push(node);
-        this.parser.events.emit("node", node);
+        if (this.nodeStack.length === 0)
+        {
+            throw new Error("No current node");
+        }
+
+        return this.nodeStack[this.nodeStack.length - 1] as RiftNodeType<K>;
     }
 
-    public createChildNode<K extends NodeKind>(kind: K, position: TokenPosition, data: ParserNodeDataMinimal<K>): NodeType<K>
+    public pushNode(node: RiftNode): void
     {
-        const node = {
-            ...data,
-            kind: kind,
-            position: position,
-            parent: this.currentNode,
-            children: data.children ?? [],
-        } as unknown as NodeType<K>;
-
-        this.currentNode.children.push(node);
-        this.parser.events.emit("node", node);
-        return node;
+        this.nodeStack.push(node);
     }
 
-    public setCurrentNode(node: RiftNode): void
+    public popNode(): RiftNode | null
     {
-        this.currentNode = node;
+        if (this.nodeStack.length === 0)
+        {
+            return null;
+        }
+
+        return this.nodeStack.pop()!;
     }
 
-    public error(message: string, position: TokenPosition): ParserError
-    {
-        let error = new ParserError(message, position);
-        this.parser.events.emit("error", error);
-        return error;
-    }
-
-}
+};

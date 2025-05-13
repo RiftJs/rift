@@ -1,121 +1,185 @@
-export enum TokenType
+import { SourcePosition } from "../utils/source-position";
+
+export enum TokenKind
 {
-    Text = "TEXT",
+    Whitespace = "Whitespace", // Whitespaces
+    Identifier = "Identifier", // word
 
-    HtmlDeclaration = "HTML_DECLARATION", // <!DOCTYPE html>
-    // XmlDeclarationEnd = "XML_DECLARATION", // <?xml version="1.0" encoding="UTF-8"?>
+    // Literals
+    StringLiteral = "StringLiteral", // String literal
+    TemplateLiteral = "TemplateLiteral", // Template literal
+    NumberLiteral = "NumberLiteral", // Number literal
+    BooleanLiteral = "BooleanLiteral", // Boolean literal
 
-    OpenTag = "OPEN_TAG", // <
-    CloseTag = "CLOSE_TAG", // >
-    SelfCloseTag = "SELF_CLOSE_TAG", // />
-    Slash = "SLASH", // /
+    // Html tokens
+    HtmlText = "HtmlText", // Text between tags
+    HtmlComment = "HtmlComment", // <!-- comment -->
+    HtmlEntity = "HtmlEntity", // &nbsp; or &#x20;
 
+    HtmlTagStart = "HtmlTagStart", // <
+    HtmlTagEnd = "HtmlTagEnd", // >
 
-    HtmlComment = "HTML_COMMENT", // <!-- comment -->
+    // script tokens
+    ScriptCode = "ScriptCode", // Javascript code between <script> tags
 
-    Identifier = "IDENTIFIER", // a-zA-Z
-    Number = "NUMBER", // 0-9
-    String = "STRING", // "string" or 'string'
+    // Matter tokens
+    MatterContent = "MatterContent", // Content between --- tags
 
-    // Brackets
-    OpenBracket = "OPEN_BRACKET", // [
-    CloseBracket = "CLOSE_BRACKET", // ]
-    OpenParenthesis = "OPEN_PARENTHESES", // (
-    CloseParenthesis = "CLOSE_PARENTHESES", // )
-    OpenCurlyBracket = "OPEN_CURLY_BRACKET", // {
-    CloseCurlyBracket = "CLOSE_CURLY_BRACKET", // }
-
-    // Punctuation
-    Comma = "COMMA", // ,
-    Semicolon = "SEMICOLON", // ;
-    Colon = "COLON", // :
-    Dot = "DOT", // .
-    QuestionMark = "QUESTION_MARK", // ?
-    ExclamationMark = "EXCLAMATION_MARK", // !
-
+    // CSS tokens
+    CssDimension = "CssDimension", // 10px, 20em, etc.
+    CssColorHex = "CssColorHex", // #ff0000, #00ff00, etc.
+    CssComment = "CssComment", // /* comment */
+    CssMatchChild = "CssMatchChild", // >
 
     // Operators
-    Plus = "PLUS",
-    Minus = "MINUS",
-    Multiply = "MULTIPLY",
-    Divide = "DIVIDE",
-    Modulus = "MODULUS",
-    Equals = "EQUALS",
-    NotEquals = "NOT_EQUALS",
-    GreaterThan = "GREATER_THAN",
-    LessThan = "LESS_THAN",
-    GreaterThanOrEquals = "GREATER_THAN_OR_EQUALS",
-    LessThanOrEquals = "LESS_THAN_OR_EQUALS",
-    LogicalAnd = "LOGICAL_AND",
-    LogicalOr = "LOGICAL_OR",
-    LogicalNot = "LOGICAL_NOT",
-    BitwiseAnd = "BITWISE_AND",
-    BitwiseOr = "BITWISE_OR",
-    BitwiseXor = "BITWISE_XOR",
-    BitwiseNot = "BITWISE_NOT",
-    ShiftLeft = "SHIFT_LEFT",
-    ShiftRight = "SHIFT_RIGHT",
+    QuestionMark = "QuestionMark", // ?
+    Bang = "Bang", // !
+    Colon = "Colon", // :
+    Semicolon = "Semicolon", // ;
+    Comma = "Comma", // ,
+    Dot = "Dot", // .
+    Plus = "Plus", // +
+    Minus = "Minus", // -
+    Slash = "Slash", // /
+    Percent = "Percent", // %
+    Equals = "Equals", // =
+    AtSign = "AtSign", // @
+    Ampersand = "Ampersand", // &
+    Pipe = "Pipe", // |
+    Tilde = "Tilde", // ~
+    Caret = "Caret", // ^
+    Dollar = "Dollar", // $
+    Star = "Star", // *
+    Hash = "Hash", // #
+    LessThan = "LessThan", // <
+    GreaterThan = "GreaterThan", // >
 
-    Statement = "STATEMENT", // @for()
+    // Brackets
+    CurlyBraceStart = "CurlyBraceStart", // {
+    CurlyBraceEnd = "CurlyBraceEnd", // }
+
+    ParenthesisStart = "ParenthesisStart", // (
+    ParenthesisEnd = "ParenthesisEnd", // )
+
+    SquareBracketStart = "SquareBracketStart", // [
+    SquareBracketEnd = "SquareBracketEnd", // ]
+
+    TemplateInterpolationStart = "TemplateInterpolationStart", // {{
+    TemplateInterpolationEnd = "TemplateInterpolationEnd", // }}
+
 };
 
-export interface TokenPosition
-{
-    line: number;
-    column: number;
-    offset: number;
-};
 
-interface BaseToken<Kind extends TokenType>
+interface BaseToken<Kind extends TokenKind>
 {
     kind: Kind;
-    position: TokenPosition;
+    position: SourcePosition;
+};
+
+export interface WhitespaceToken extends BaseToken<TokenKind.Whitespace>
+{
+    whitespace: string;
 };
 
 
-export interface TextToken extends BaseToken<TokenType.Text>
+/*
+* Html tokens
+*/
+
+
+export interface HtmlTextToken extends BaseToken<TokenKind.HtmlText>
 {
     text: string;
 };
 
-export interface IdentifierToken extends BaseToken<TokenType.Identifier>
-{
-    name: string;
-};
-
-// Number Token
-export interface NumberToken extends BaseToken<TokenType.Number>
-{
-    value: number;
-};
-
-// String Token
-export interface TokenString extends BaseToken<TokenType.String>
-{
-    value: string;
-};
-
-export interface HtmlCommentToken extends BaseToken<TokenType.HtmlComment>
+export interface HtmlCommentToken extends BaseToken<TokenKind.HtmlComment>
 {
     comment: string;
 };
 
-export interface DeclarationToken extends BaseToken<TokenType.HtmlDeclaration>
+export interface HtmlEntityToken extends BaseToken<TokenKind.HtmlEntity>
 {
-    declaration: string;
-}
+    entity: string;
+};
 
-export interface StatementToken extends BaseToken<TokenType.Statement>
+export interface HtmlIdentifierToken extends BaseToken<TokenKind.Identifier>
 {
     identifier: string;
 };
 
-export type TokenKind = Token["kind"];
+/*
+* Css Tokens
+*/
+export interface CssDimensionToken extends BaseToken<TokenKind.CssDimension>
+{
+    value: number;
+    unit: string;
+};
 
-export type ExplicitTokens = TextToken | IdentifierToken | NumberToken | TokenString | HtmlCommentToken | DeclarationToken | StatementToken;
+export interface CssColorHexToken extends BaseToken<TokenKind.CssColorHex>
+{
+    colorHex: string;
+};
+
+export interface CssCommentToken extends BaseToken<TokenKind.CssComment>
+{
+    comment: string;
+};
+
+/*
+* Javascript tokens
+*/
+export interface ScriptCodeToken extends BaseToken<TokenKind.ScriptCode>
+{
+    code: string;
+};
+
+/*
+* Matter tokens
+*/
+export interface MatterContentToken extends BaseToken<TokenKind.MatterContent>
+{
+    content: string;
+};
+
+/*
+* Literal tokens
+*/
+export interface StringLiteralToken extends BaseToken<TokenKind.StringLiteral>
+{
+    string: string;
+};
+
+export interface TemplateLiteralToken extends BaseToken<TokenKind.TemplateLiteral>
+{
+    string: string;
+};
+
+export interface NumberLiteralToken extends BaseToken<TokenKind.NumberLiteral>
+{
+    number: number;
+};
+
+export interface BooleanLiteralToken extends BaseToken<TokenKind.BooleanLiteral>
+{
+    boolean: boolean;
+};
+
+
+export type TokenKindOf = Token["kind"];
+
+export type HtmlTokens = HtmlTextToken | HtmlCommentToken | HtmlEntityToken | HtmlIdentifierToken;
+export type LiteralTokens = StringLiteralToken | TemplateLiteralToken | NumberLiteralToken | BooleanLiteralToken;
+export type WhitespaceTokens = WhitespaceToken;
+export type CssTokens = CssDimensionToken | CssColorHexToken | CssCommentToken;
+export type ScriptTokens = ScriptCodeToken;
+
+export type ExplicitTokens = WhitespaceToken | HtmlTokens | CssTokens | ScriptTokens | LiteralTokens | MatterContentToken;
+
 export type ExplicitTokenTypes = ExplicitTokens['kind'];
 
-export type CommonTokenTypes = Exclude<TokenType, ExplicitTokenTypes>;
+export type CommonTokenTypes = Exclude<TokenKind, ExplicitTokenTypes>;
 export type CommonTokens = BaseToken<CommonTokenTypes>;
 
 export type Token = ExplicitTokens | CommonTokens;
+export type TokenOfKind<K extends TokenKindOf> = K extends Token["kind"] ? Extract<Token, { kind: K }> : never;
